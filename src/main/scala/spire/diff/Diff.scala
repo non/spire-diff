@@ -78,17 +78,13 @@ case class Diff(slices: List[Slice]) {
             case SliceB(x, y, len) =>
               cfor(0)(_ < len, _ + 1) { i =>
                 val a = xs(x + i)
-                val b = ys(y + i)
-                if (a === b) {
-                  println("=== " + a.toString)
-                } else {
-                  println("=== " + a.toString + " =!= " + b.toString)
-                }
+                assert(a === ys(y + i))
+                println("= " + a.toString)
               }
             case SliceL(x0, x1) =>
-              cfor(x0)(_ < x1, _ + 1) { i => println("<<< " + xs(i)) }
+              cfor(x0)(_ < x1, _ + 1) { i => println("< " + xs(i)) }
             case SliceR(y0, y1) =>
-              cfor(y0)(_ < y1, _ + 1) { i => println(">>> " + ys(i)) }
+              cfor(y0)(_ < y1, _ + 1) { i => println("> " + ys(i)) }
           }
           loop(rest)
       }
