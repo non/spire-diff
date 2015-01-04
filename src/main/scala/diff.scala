@@ -22,12 +22,12 @@ case class SliceB(startL: Int, startR: Int, len: Int) extends Slice
 case class SliceL(startL: Int, limitL: Int) extends Slice
 case class SliceR(startR: Int, limitR: Int) extends Slice
 
-sealed trait Marker { def size: Int; def isMatch: Boolean = false }
-case object Terminal extends Marker { def size: Int = 0 }
-case class Match(size: Int) extends Marker { override def isMatch: Boolean = true }
-case class West(size: Int) extends Marker
-case class North(size: Int) extends Marker
-case class Split(size: Int) extends Marker
+sealed abstract class Marker(val glyph: Char) { def size: Int }
+case object Terminal extends Marker('∅') { def size: Int = 0 }
+case class Match(size: Int) extends Marker('↖')
+case class West(size: Int) extends Marker('←')
+case class North(size: Int) extends Marker('↑')
+case class Split(size: Int) extends Marker('┛')
 
 object Diff {
 
@@ -142,15 +142,8 @@ case class Matrix(rows: Array[Array[Marker]]) {
     val width = maxSize.toString.length
     val fmt = "%c{%" + width + "d} "
     rows.foreach { row =>
-      row.foreach { marker =>
-        val (c, n) = marker match {
-          case Terminal => ('∅', 0)
-          case Match(n) => ('↖', n)
-          case West(n) =>  ('←', n)
-          case North(n) => ('↑', n)
-          case Split(n) => ('┛', n)
-        }
-        print(fmt format (c, n))
+      row.foreach { m =>
+        print(fmt format (m.glyph, m.size))
       }
       println("")
     }
