@@ -72,16 +72,17 @@ SliceL(3,4)
 SliceB(4,4,1)
 ```
 
-Each of these is a `Slice` -- `Diff.diff(left, right)` produces a
-`List[Slice]` which accounts for how every element in both `left` and
-`right` will be handled in the diff.
+Each of these is a `Slice`. `Diff.diff(left, right)` produces a
+`Diff`, which is really just a wrapper for a `List[Slice]`. These
+slices account for how every element in both `left` and `right` will
+be handled in the diff.
 
 The big idea is that the `Diff.diff` call is not copying the
-underlying data from `left` or `right`. Rather, it just provides
-instructions on the best "path" to take through both inputs to find
-the most agreement between them. This is why the `delta.display` line
-needed to take `(left, right)` as arguments -- otherwise it would have
-no idea what the actual data was.
+underlying data from the `left` or `right` arrays. Rather, it just
+provides instructions on the best "path" to take through both inputs
+to find the most agreement between them. This is why the
+`delta.display` call needed to take `(left, right)` as arguments;
+otherwise it would have no idea what the actual data was.
 
 ### Future Work
 
