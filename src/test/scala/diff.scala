@@ -10,42 +10,65 @@ import spire.implicits._
 class DiffCheck extends PropSpec with Matchers with GeneratorDrivenPropertyChecks {
   val emptyArray = Array.empty[Int]
 
-  // property("diff(nil, nil)") {
-  //   Diff.getSlices(emptyArray, emptyArray) shouldBe Nil
-  // }
-  // 
-  // property("diff(xs, xs)") {
-  //   forAll { (xs: Array[Int]) => if (xs.nonEmpty)
-  //     Diff.getSlices(xs, xs) shouldBe List(SliceB(0, 0, xs.length))
-  //   }
-  // }
-  // 
-  // property("diff(xs, nil)") {
-  //   forAll { (xs: Array[Int]) => if (xs.nonEmpty)
-  //     Diff.getSlices(xs, emptyArray) shouldBe List(SliceL(0, xs.length))
-  //   }
-  // }
-
-  property("diff seems ok") {
-    val xs = Array("one", "two", "three", "four", "five", "six")
-    val ys = Array("zero", "one", "one", "two", "three", "five")
-    // val xs = Array("one", "two", "three")
-    // val ys = Array("four", "five", "six")
-    //Diff.printDiff(xs, ys, Diff.getSlices(xs, ys))
-    val slices = Diff.getDiff(Chunk(xs), Chunk(ys), Nil)
-    Diff.printDiff(xs, ys, slices)
+  def check[A](slices: List[Slice], xs: Array[A], ys: Array[A]): Boolean = {
+    def loop(slices: List[Slice], x: Int, y: Int): Option[(Int, Int)] =
+      slices match {
+        case Nil =>
+          Some((x, y))
+        case slice :: tail =>
+          slice match {
+            case SliceL(x0, x1) =>
+              if (x0 == x) loop(tail, x1, y) else None
+            case SliceR(y0, y1) =>
+              if (y0 == y) loop(tail, x, y1) else None
+            case SliceB(x0, y0, len) =>
+              if (x0 == x && y0 == y) loop(tail, x + len, y + len) else None
+          }
+      }
+    loop(slices, 0, 0).filter { case (x, y) =>
+      x == xs.length && y == ys.length
+    }.isDefined
   }
 
-  // property("diff(ys, xs:ys:zs)") {
-  //   forAll { (xs: Int, ys: Array[Int], zs: Array[Int]) =>
-  //     if (xs.nonEmpty && ys.nonEmpty && zs.nonEmpty) {
-  //       val (xl, yl, zl) = (xs.length, ys.length, zs.length)
-  //       val left = ys
-  //       val right = xs ++ ys ++ zs
-  //       val diff = Diff.getSlices(left, right)
-  //       val expected = SliceR(0, xl) :: SliceB(0, xl, yl) :: SliceR(xl + yl, xl + yl + zl) :: Nil
-  //       diff shouldBe expected
-  //     }
-  //   }
-  // }
+  property("diff(nil, nil)") {
+    Diff.diff(emptyArray, emptyArray) shouldBe Diff(Nil)
+  }
+
+  property("diff(xs, xs)") {
+    forAll { (xs: Array[Int]) =>
+      val delta = Diff.diff(xs, xs)
+      if (xs.isEmpty) delta.slices shouldBe Nil
+      else delta.slices shouldBe List(SliceB(0, 0, xs.length))
+    }
+  }
+
+  property("diff(xs, nil)") {
+    forAll { (xs: Array[Int]) =>
+      val delta = Diff.diff(xs, emptyArray)
+      if (xs.isEmpty) delta.slices shouldBe Nil
+      else delta.slices shouldBe List(SliceL(0, xs.length))
+    }
+  }
+
+  property("diff(nil, xs)") {
+    forAll { (xs: Array[Int]) =>
+      val delta = Diff.diff(emptyArray, xs)
+      if (xs.isEmpty) delta.slices shouldBe Nil
+      else delta.slices shouldBe List(SliceR(0, xs.length))
+    }
+  }
+
+  property("diff(xs, ys) should be ok") {
+    forAll { (xs: Array[Int], ys: Array[Int]) =>
+      val delta = Diff.diff(xs, ys)
+      check(delta.slices, xs, ys) shouldBe true
+    }
+  }
+
+  property("diffBody(xs, ys, ...) should be ok") {
+    forAll { (xs: Array[Int], ys: Array[Int]) =>
+      val slices = Diff.diffBody(Chunk(xs), Chunk(ys), 0, Nil)
+      check(slices, xs, ys) shouldBe true
+    }
+  }
 }

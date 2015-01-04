@@ -22,97 +22,95 @@ case class SliceB(startL: Int, startR: Int, len: Int) extends Slice
 case class SliceL(startL: Int, limitL: Int) extends Slice
 case class SliceR(startR: Int, limitR: Int) extends Slice
 
+sealed trait Marker { def size: Int; def isMatch: Boolean = false }
+case object Terminal extends Marker { def size: Int = 0 }
+case class Match(size: Int) extends Marker { override def isMatch: Boolean = true }
+case class West(size: Int) extends Marker
+case class North(size: Int) extends Marker
+case class Split(size: Int) extends Marker
+
 object Diff {
 
-  def printDiff[A: Eq](xs: Array[A], ys: Array[A], slices: List[Slice]): Unit =
-    slices match {
-      case Nil => ()
-      case slice :: rest =>
-        slice match {
-          case SliceB(x, y, len) =>
-            cfor(0)(_ < len, _ + 1) { i =>
-              if (xs(x + i) === ys(y + i)) {
-                println("=== " + xs(x + i).toString)
-              } else {
-                println("=!= " + xs(x + i).toString + " =!= " + ys(y + i).toString)
-              }
-            }
-          case SliceL(x0, x1) =>
-            cfor(x0)(_ < x1, _ + 1) { i => println("<<< " + xs(i)) }
-          case SliceR(y0, y1) =>
-            cfor(y0)(_ < y1, _ + 1) { i => println(">>> " + ys(i)) }
-        }
-        printDiff(xs, ys, rest)
-    }
+  def diffBody[A: Eq](xs: Chunk[A], ys: Chunk[A], offset: Int, suffix: List[Slice]): List[Slice] = {
+    val matrix = Matrix.construct(xs, ys)
+    //matrix.display()
+    matrix.trace(offset, suffix)
+  }
 
-  def getSlices[A: Eq: ClassTag](xs: Array[A], ys: Array[A]): List[Slice] = {
+  def diff[A: Eq: ClassTag](xs: Array[A], ys: Array[A]): Diff = {
     // some short circuits
     if (xs.length == 0) {
-      return if (ys.length == 0) Nil else SliceR(0, ys.length) :: Nil
+      return Diff(if (ys.length == 0) Nil else SliceR(0, ys.length) :: Nil)
     } else if (ys.length == 0) {
-      return SliceL(0, xs.length) :: Nil
+      return Diff(SliceL(0, xs.length) :: Nil)
     }
 
     // find the first difference
     var i = 0
     while (i < xs.length && i < ys.length && xs(i) === ys(i)) { i += 1 }
-    val prefix = SliceB(0, 0, i)
+    val prefix = if (i > 0) Some(SliceB(0, 0, i)) else None
 
     // more possible short circuits
     if (xs.length == i) {
-      return if (ys.length == i) prefix :: Nil else prefix :: SliceR(i, ys.length) :: Nil
+      prefix match {
+        case Some(p) =>
+          Diff(if (ys.length == i) p :: Nil else p :: SliceR(i, ys.length) :: Nil)
+        case None =>
+          Diff(if (ys.length == i) Nil else SliceR(i, ys.length) :: Nil)
+      }
     } else if (ys.length == i) {
-      return prefix :: SliceL(i, xs.length) :: Nil
+      prefix match {
+        case Some(p) =>
+          return Diff(p :: SliceL(i, xs.length) :: Nil)
+        case None =>
+          return Diff(SliceL(i, xs.length) :: Nil)
+      }
     }
 
     // find the last difference
     var j = xs.length - 1
     var k = ys.length - 1
     while (j > i && k > i && xs(j) === ys(k)) { j -= 1; k -= 1 }
-    val suffix = if (j < xs.length) SliceB(j, k, xs.length - j) :: Nil else Nil
+    val suffix = if (j < xs.length - 1) SliceB(j + 1, k + 1, xs.length - j - 1) :: Nil else Nil
 
     // need to diff xs[i..j] with ys[j..k]
-    prefix :: getDiff(Chunk(xs, i, j), Chunk(ys, i, k), suffix)
-  }
-
-  sealed trait Marker { def size: Int; def isMatch: Boolean = false }
-  case object Terminal extends Marker { def size: Int = 0 }
-  case class Match(size: Int) extends Marker { override def isMatch: Boolean = true }
-  case class West(size: Int) extends Marker
-  case class North(size: Int) extends Marker
-  case class Split(size: Int) extends Marker
-
-  type Matrix = Array[Array[Marker]]
-
-  def printMatrix[A](matrix: Matrix, width: Int): Unit = {
-    val fmt = "%c{%" + width.toString + "d} "
-    cfor(0)(_ < matrix.length, _ + 1) { y =>
-      val len = matrix(y).length
-      cfor(0)(_ < len, _ + 1) { x =>
-        val (c, n) = matrix(y)(x) match {
-          case Terminal => ('∅', 0)
-          case Match(n) => ('↖', n)
-          case West(n) =>  ('←', n)
-          case North(n) => ('↑', n)
-          case Split(n) => ('┛', n)
-        }
-        print(fmt format (c, n))
-      }
-      println("")
+    val slices = diffBody(Chunk(xs, i, j + 1), Chunk(ys, i, k + 1), i, suffix)
+    prefix  match {
+      case Some(p) => Diff(p :: slices)
+      case None => Diff(slices)
     }
-  }
-
-  def getDiff[A: Eq](xs: Chunk[A], ys: Chunk[A], suffix: List[Slice]): List[Slice] = {
-    val matrix = Matrix2.construct(xs, ys)
-    matrix.display()
-    matrix.trace(suffix)
   }
 }
 
-import Diff._
+case class Diff(slices: List[Slice]) {
 
-object Matrix2 {
-  def construct[A: Eq](xs: Chunk[A], ys: Chunk[A]): Matrix2 = {
+  def display[A: Eq](xs: Array[A], ys: Array[A]): Unit = {
+    def loop(slices: List[Slice]): Unit =
+      slices match {
+        case Nil => ()
+        case slice :: rest =>
+          slice match {
+            case SliceB(x, y, len) =>
+              cfor(0)(_ < len, _ + 1) { i =>
+                if (xs(x + i) === ys(y + i)) {
+                  println("=== " + xs(x + i).toString)
+                } else {
+                  println("=!= " + xs(x + i).toString + " =!= " + ys(y + i).toString)
+                }
+              }
+            case SliceL(x0, x1) =>
+              cfor(x0)(_ < x1, _ + 1) { i => println("<<< " + xs(i)) }
+            case SliceR(y0, y1) =>
+              cfor(y0)(_ < y1, _ + 1) { i => println(">>> " + ys(i)) }
+          }
+          loop(rest)
+      }
+    loop(slices)
+  }
+}
+
+object Matrix {
+  def construct[A: Eq](xs: Chunk[A], ys: Chunk[A]): Matrix = {
     val lx = xs.length
     val ly = ys.length
     val rows = Array.fill[Marker](ly + 1, lx + 1)(Terminal)
@@ -129,15 +127,16 @@ object Matrix2 {
           }
       }
     }
-    Matrix2(rows)
+    Matrix(rows)
   }
 }
 
-case class Matrix2(rows: Array[Array[Marker]]) {
+case class Matrix(rows: Array[Array[Marker]]) {
 
   def apply(x: Int, y: Int): Marker = rows(y)(x)
 
-  def maxSize: Int = rows.last.last.size
+  def maxSize: Int =
+    if (rows.nonEmpty) rows.last.last.size else 0
 
   def display(): Unit = {
     val width = maxSize.toString.length
@@ -157,12 +156,12 @@ case class Matrix2(rows: Array[Array[Marker]]) {
     }
   }
 
-  def trace(suffix: List[Slice]): List[Slice] = {
+  def trace(offset: Int, suffix: List[Slice]): List[Slice] = {
     @tailrec def loop(x: Int, y: Int, slices: List[Slice]): List[Slice] = {
       this(x, y) match {
         case Terminal =>
-          if (y > 0) SliceR(0, y) :: slices
-          else if (x > 0) SliceL(0, x) :: slices
+          if (y > 0) SliceR(offset, offset + y) :: slices
+          else if (x > 0) SliceL(offset, offset + x) :: slices
           else slices
         case Match(_) =>
           val (xx, yy, slice) = buildBoth(x - 1, y - 1, 1)
@@ -179,21 +178,23 @@ case class Matrix2(rows: Array[Array[Marker]]) {
     def buildLeft(x: Int, y: Int, x1: Int): (Int, Int, Slice) =
       this(x, y) match {
         case West(_) | Split(_) => buildLeft(x - 1, y, x1)
-        case _ => (x, y, SliceL(x, x1))
+        case _ => (x, y, SliceL(offset + x, offset + x1))
       }
 
     def buildRight(x: Int, y: Int, y1: Int): (Int, Int, Slice) =
       this(x, y) match {
         case North(_) | Split(_) => buildRight(x, y - 1, y1)
-        case _ => (x, y, SliceR(y, y1))
+        case _ => (x, y, SliceR(offset + y, offset + y1))
       }
 
     def buildBoth(x: Int, y: Int, len: Int): (Int, Int, Slice) =
       this(x, y) match {
         case Match(_) => buildBoth(x - 1, y - 1, len + 1)
-        case _ => (x, y, SliceB(x, y, len))
+        case _ => (x, y, SliceB(offset + x, offset + y, len))
       }
 
-    loop(rows.last.length - 1, rows.length - 1, suffix)
+    if (rows.nonEmpty) {
+      loop(rows.last.length - 1, rows.length - 1, suffix)
+    } else Nil
   }
 }
